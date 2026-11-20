@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Интерактивная предварительная модель ФОТ на 2027 год">
+  <title>ФОТ 2027 — интерактивная модель</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="script.js" defer></script>
+</head>
+<body>
+<main class="page">
+    <section class="intro">
+      <h1>Модель фонда оплаты труда (2027 год)</h1>
+      <button id="exportExcelBtn" type="button" class="export-button">
+      Скачать Excel
+      </button>
+    </section>
+
+    <nav class="tabs" aria-label="Разделы модели">
+      <button class="tab active" data-tab="overview">Общая модель</button>
+      <button class="tab" data-tab="staff">Штат и оклады</button>
+      <button class="tab" data-tab="motivation">Мотивация</button>
+      <button class="tab" data-tab="monthly">Помесячный расчёт</button>
+      <button class="tab" data-tab="employees">ФОТ по сотрудникам</button>
+    </nav>
+
+    <section class="tab-panel active" id="tab-overview">
+      <div class="section-heading"><div><p class="eyebrow">01 / ФИНАНСОВЫЕ ПАРАМЕТРЫ</p><h2>Сценарий компании</h2></div><span class="muted">Все суммы в рублях</span></div>
+      <div class="overview-grid">
+        <article class="card control-card">
+          <div class="control-head"><label for="annualRevenue">Годовой план выручки</label><output id="annualRevenueOut"></output></div>
+          <input id="annualRevenue" type="range" min="50000000" max="250000000" step="1000000" value="140000000">
+          <div class="range-scale"><span>50 млн</span><span>250 млн</span></div>
+          <div class="control-head sub-control"><label for="achievement">Выполнение плана</label><output id="achievementOut"></output></div>
+          <input id="achievement" type="range" min="80" max="120" step="1" value="100">
+          <div class="range-scale"><span>80%</span><span>120%</span></div>
+          <div class="control-head sub-control"><label for="averageCheck">Средний чек</label><output id="averageCheckOut"></output></div>
+          <input id="averageCheck" type="range" min="500000" max="3000000" step="10000" value="1360000">
+          <div class="range-scale"><span>500 тыс.</span><span>3 млн</span></div>
+          <div class="control-head sub-control"><label for="measureConversion">Конверсия замер → договор</label><output id="measureConversionOut"></output></div>
+          <input id="measureConversion" type="range" min="5" max="80" step="1" value="25">
+          <div class="range-scale"><span>5%</span><span>80%</span></div>
+          <div class="field-row">
+            <label for="kpiScenario">Сценарий KPI</label>
+            <select id="kpiScenario"><option value="min">Минимальный</option><option value="avg" selected>Средний (условный)</option><option value="max">Максимальный</option></select>
+          </div>
+        </article>
+        <article class="card summary-card">
+          <p class="eyebrow">ИТОГ ЗА ГОД</p>
+          <div class="metric-primary"><span>Расчётный ФОТ</span><strong id="totalFot">—</strong></div>
+          <div class="metric-list">
+            <div><span>Плановая выручка с учётом выполнения</span><b id="revenueFact">—</b></div>
+            <div><span>ФОТ / выручка</span><b id="fotShare">—</b></div>
+            <div><span>Оклады за год</span><b id="salaryYear">—</b></div>
+            <div><span>KPI за год</span><b id="kpiYear">—</b></div>
+            <div><span>Переменная часть за год</span><b id="variableYear">—</b></div>
+          </div>
+          <div class="summary-foot">Включены ежемесячные комиссии, сдельные выплаты и квартальные бонусы. Годовой бонус РОП зависит от выполнения плана: 600 тыс. ₽ при 100%.</div>
+        </article>
+      </div>
+
+      <div class="section-heading chart-heading"><div><p class="eyebrow">02 / СТРУКТУРА РАСХОДОВ</p><h2>Как формируется ФОТ</h2></div></div>
+      <div class="chart-grid">
+        <article class="card chart-card"><div class="card-title"><h3>ФОТ по месяцам</h3><span>руб.</span></div><div class="chart-wrap"><canvas id="monthlyChart" height="230"></canvas><div class="chart-tooltip" id="monthlyTooltip"></div></div></article>
+        <article class="card chart-card"><div class="card-title"><h3>Структура годового ФОТ</h3><span>руб.</span></div><div class="chart-wrap"><canvas id="structureChart" height="230"></canvas><div class="chart-tooltip" id="structureTooltip"></div></div><div id="structureLegend" class="legend"></div></article>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-staff">
+      <div class="section-heading"><div><p class="eyebrow">03 / ЧИСЛЕННОСТЬ И ОКЛАДЫ</p><h2>Штатная структура</h2></div><span class="muted">Численность и оклады можно менять</span></div>
+      <div class="card table-card">
+        <div class="table-scroll"><table class="data-table" id="staffTable">
+          <thead><tr><th>Должность</th><th>Кол-во</th><th>Оклад / мес.</th><th>Оклады / год</th></tr></thead>
+          <tbody></tbody>
+          <tfoot><tr><td>Итого</td><td id="staffTotalCount">—</td><td>—</td><td id="staffTotalSalary">—</td></tr></tfoot>
+        </table></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-motivation">
+      <div class="section-heading"><div><p class="eyebrow">04 / МОТИВАЦИЯ</p><h2>Ежемесячные KPI</h2></div></div>
+      <div class="card table-card">
+        <div class="table-scroll"><table class="data-table" id="kpiTable">
+          <thead><tr><th>Должность</th><th data-scenario="min">Минимум / мес.</th><th data-scenario="avg">Средний / мес.</th><th data-scenario="max">Максимум / мес.</th><th>Выбрано сейчас</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+      <div class="section-heading secondary-heading"><div><p class="eyebrow">ПЕРЕМЕННАЯ ЧАСТЬ</p><h2>Параметры начисления</h2></div><span class="muted">Меняй ставки и исходные показатели</span></div>
+      <div class="variable-grid">
+        <article class="card variable-card">
+          <h3>Ежемесячные выплаты</h3>
+          <div class="param-row"><label for="ropMonthlyRate">РОП — от оборота команды</label><div class="param-input"><input id="ropMonthlyRate" type="number" min="0" step="0.1" value="1.0"><span>%</span></div></div>
+          <div class="param-row"><label for="groupMonthlyRate">Руководитель группы — от выручки группы</label><div class="param-input"><input id="groupMonthlyRate" type="number" min="0" step="0.1" value="0.5"><span>%</span></div></div>
+          <p class="hint">Выручка распределяется поровну между двумя группами. Каждый руководитель получает 0,5% от выручки своей группы; суммарно комиссия двух руководителей составляет 0,5% от общей выручки.</p>
+          <div class="param-row"><label for="fieldRate">Выездной менеджер — от выручки</label><div class="param-input"><input id="fieldRate" type="number" min="0" step="0.1" value="2.25"><span>%</span></div></div>
+          <div class="param-row"><label for="engineerRate">Инженер — от выручки</label><div class="param-input"><input id="engineerRate" type="number" min="0" step="0.1" value="1.5"><span>%</span></div></div>
+          <p class="hint">В модели предполагается, что все договоры подписаны на замере. Поэтому комиссия инженера рассчитывается от всей выручки.</p>
+        </article>
+        <article class="card variable-card">
+          <h3>Квартальные и годовые выплаты</h3>
+          <div class="rate-list">
+            <div><span>Лидоруб — от выручки отдела за квартал</span><div class="param-input"><input id="leadQuarterRate" type="number" min="0" step="0.01" value="0.05"><span>%</span></div></div>
+            <div><span>Старший лидоруб — от выручки отдела за квартал</span><div class="param-input"><input id="seniorQuarterRate" type="number" min="0" step="0.01" value="0.03"><span>%</span></div></div>
+            <div><span>Выездной менеджер — от выручки за квартал</span><div class="param-input"><input id="fieldQuarterRate" type="number" min="0" step="0.01" value="0.10"><span>%</span></div></div>
+          </div>
+          <div class="param-row"><label for="ropAnnualBonus">Бонус РОП при выполнении плана на 100%</label><div class="param-input"><input id="ropAnnualBonus" type="number" min="0" step="10000" value="600000"><span>₽</span></div></div>
+          <p class="hint">Квартальные премии рассчитываются от выручки за три месяца и выплачиваются в марте, июне, сентябре и декабре. Бонус РОП пропорционален выполнению плана: при 100% — 600 000 ₽, при 90% — 540 000 ₽. Сумма ограничена лимитом в 600 тыс.</p>
+        </article>
+        <article class="card variable-card travel-card">
+          <h3>Компенсация выездным менеджерам</h3>
+          <div class="param-row"><label for="travelDistance">Расстояние на один замер</label><div class="param-input"><input id="travelDistance" type="number" min="0" step="1" value="120"><span>км</span></div></div>
+          <div class="param-row"><label for="fuelPrice">Стоимость бензина</label><div class="param-input"><input id="fuelPrice" type="number" min="0" step="1" value="78"><span>₽/л</span></div></div>
+          <div class="param-row"><label>Расход топлива</label><strong>0,09 л/км</strong></div>
+          <div class="param-row"><label>ТО</label><strong>2,5 ₽/км</strong></div>
+          <div class="travel-result"><span>Компенсация за один замер</span><strong id="travelPerMeasure">—</strong></div>
+          <p class="hint">Бензин = расстояние × 0,09 × стоимость бензина. ТО = расстояние × 2,5. Общая компенсация рассчитывается по количеству целевых замеров.</p>
+        </article>
+      </div>
+      <div class="section-heading secondary-heading"><div><p class="eyebrow">СДЕЛЬНАЯ ЧАСТЬ</p><h2>Целевые состоявшиеся замеры</h2></div></div>
+      <div class="card control-card measure-card">
+        <p>Количество целевых замеров рассчитывается автоматически: плановая выручка / средний чек / конверсия замер → договор. Лидоруб получает 1 000 ₽ за каждый состоявшийся целевой замер.</p>
+        <span class="hint">При допущении, что все договоры подписаны на замере, инженер получает 1,5% от всей плановой выручки.</span>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-monthly">
+      <div class="section-heading"><div><p class="eyebrow">05 / ДИНАМИКА ГОДА</p><h2>Помесячный расчёт</h2></div><span class="muted">Суммы в рублях</span></div>
+      <div class="card table-card">
+        <div class="table-scroll"><table class="data-table monthly-table">
+          <thead><tr><th>Месяц</th><th>Доля</th><th>Выручка</th><th>Оклады</th><th>KPI</th><th>% начисления</th><th>Целевые<br>замеры, шт.</th><th>KPI за<br>замеры</th><th>Компенсация<br>выездным</th><th>Квартальные /<br>годовые</th><th>Итого ФОТ</th><th>ФОТ /<br>выручка</th></tr></thead>
+          <tbody id="monthlyBody"></tbody>
+          <tfoot id="monthlyFoot"></tfoot>
+        </table></div>
+      </div>
+      <div class="card season-card"><h3>Сезонное распределение годовой выручки</h3><p>Доли исходного плана нормализованы: сумма отображаемых процентов составляет ровно 100,00%. Квартальные премии отражаются в марте, июне, сентябре и декабре.</p><div id="seasonBars" class="season-bars"></div></div>
+    </section>
+
+    <section class="tab-panel" id="tab-employees">
+      <div class="section-heading"><div><p class="eyebrow">06 / ПЕРСОНАЛЬНАЯ СТРУКТУРА</p><h2>ФОТ по каждому сотруднику</h2></div><span class="muted">Суммы в рублях за год</span></div>
+      <div class="card table-card">
+        <div class="table-scroll"><table class="data-table employee-table">
+          <thead><tr><th>Сотрудник</th><th>Общий ФОТ</th><th>% от общего ФОТ</th><th>Средний ФОТ<br>в месяц</th><th>Оклад</th><th>KPI</th><th>% начисления</th><th>KPI за<br>замер</th><th>Компенсация<br>выездным</th><th>Квартальные<br>выплаты</th><th>Годовой<br>бонус</th></tr></thead>
+          <tbody id="employeeFotBody"></tbody>
+          <tfoot id="employeeFotFoot"></tfoot>
+        </table></div>
+      </div>
+      <p class="hint page-hint">Если в должности несколько сотрудников, начисления по этой должности распределяются между ними поровну. Оклад и KPI рассчитываются отдельно для каждого сотрудника. Доля ФОТ показывает вклад сотрудника в общий годовой фонд оплаты труда.</p>
+    </section>
+
+    <footer class="footer">
+      <span>ФОТ 2027 · предварительная модель</span>
+      
+    </footer>
+  </main>
+</body>
+</html>
