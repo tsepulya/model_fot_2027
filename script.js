@@ -84,8 +84,10 @@ function calculate(){
       (roles.find(r=>r.id==="group").count ? revenue*p.groupMonthlyRate : 0) +
       (roles.find(r=>r.id==="field").count ? revenue*p.fieldRate : 0) +
       (roles.find(r=>r.id==="engineer").count ? onsiteContracts*p.engineerRate : 0);
-    const piecework=targetMeasures*1000;
-    const travelCompensation=targetMeasures*travelPerMeasure;
+    // Сдельная оплата возникает только при наличии лидорубов в штате.
+    const piecework=roles.find(r=>r.id==="lead").count ? targetMeasures*1000 : 0;
+    // Компенсация поездок начисляется только при наличии выездных менеджеров.
+    const travelCompensation=roles.find(r=>r.id==="field").count ? targetMeasures*travelPerMeasure : 0;
     return {index:i,name,share,sharePercent:displayShares[i],revenue,salary:salaryMonth,kpi:kpiMonth,monthlyCommission,piecework,travelCompensation,targetMeasures,quarterly:0,annualBonus:0};
   });
   quarterEnd.forEach(endIndex=>{
@@ -97,10 +99,10 @@ function calculate(){
       roles.find(r=>r.id==="field").count*quarterRevenue*p.fieldQuarterRate;
     monthsData[endIndex].quarterly=quarterlyBonus;
   });
-  monthsData[11].annualBonus = Math.min(
-    600000,
-    p.ropAnnualBonusBase * p.achievement
-  );
+  // Годовой бонус не должен попадать в ФОТ, если должность РОПа обнулена.
+  monthsData[11].annualBonus = roles.find(r=>r.id==="rop").count
+    ? Math.min(600000, p.ropAnnualBonusBase * p.achievement)
+    : 0;
   monthsData.forEach(m=>{
     m.variable=m.monthlyCommission+m.piecework+m.travelCompensation+m.quarterly+m.annualBonus;
     m.fot=m.salary+m.kpi+m.variable;
@@ -137,8 +139,11 @@ function calculate(){
       employeeRows.push({name:`${role.name} ${n}`,total,salary,kpi,monthlyCommission,piecework,travel,quarterly,annualBonus});
     }
   });
-  const variableYear=sum(monthsData.map(m=>m.variable));
-  const fotYear=salaryYear+kpiYear+variableYear;
+  // Итоговый ФОТ строится по тем же персональным начислениям, что и таблица сотрудников.
+  // Это гарантирует совпадение итогов при любом изменении численности.
+  const employeeFotYear=sum(employeeRows.map(e=>e.total));
+  const variableYear=sum(employeeRows.map(e=>e.monthlyCommission+e.piecework+e.travel+e.quarterly+e.annualBonus));
+  const fotYear=employeeFotYear;
   const totalMeasures=sum(monthsData.map(m=>m.targetMeasures));
   return {p,revenueYear,salaryMonth,kpiMonth,salaryYear,kpiYear,variableYear,fotYear,monthsData,totalMeasures,totalTravel,travelPerMeasure,employeeRows};
 }
