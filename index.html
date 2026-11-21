@@ -24,6 +24,7 @@
       <button class="tab" data-tab="motivation">Мотивация</button>
       <button class="tab" data-tab="monthly">Помесячный расчёт</button>
       <button class="tab" data-tab="employees">ФОТ по сотрудникам</button>
+      <button class="tab" data-tab="employee-monthly">ФОТ по месяцам</button>
     </nav>
 
     <section class="tab-panel active" id="tab-overview">
@@ -44,7 +45,7 @@
           <div class="range-scale"><span>5%</span><span>80%</span></div>
           <div class="field-row">
             <label for="kpiScenario">Сценарий KPI</label>
-            <select id="kpiScenario"><option value="min">Минимальный</option><option value="avg" selected>Средний (условный)</option><option value="max">Максимальный</option></select>
+            <select id="kpiScenario"><option value="zero" selected>Нулевой (0 ₽)</option><option value="min">Минимальный</option><option value="avg">Средний (условный)</option><option value="max">Максимальный</option></select>
           </div>
         </article>
         <article class="card summary-card">
@@ -72,10 +73,15 @@
       <div class="section-heading"><div><p class="eyebrow">03 / ЧИСЛЕННОСТЬ И ОКЛАДЫ</p><h2>Штатная структура</h2></div><span class="muted">Численность и оклады можно менять</span></div>
       <div class="card table-card">
         <div class="table-scroll"><table class="data-table" id="staffTable">
-          <thead><tr><th>Должность</th><th>Кол-во</th><th>Оклад / мес.</th><th>Оклады / год</th></tr></thead>
+          <thead><tr><th>Должность</th><th>Плановая единица</th><th>Статус</th><th>Оклад / мес.</th><th>С месяца</th><th>По месяц</th><th></th></tr></thead>
           <tbody></tbody>
-          <tfoot><tr><td>Итого</td><td id="staffTotalCount">—</td><td>—</td><td id="staffTotalSalary">—</td></tr></tfoot>
+          <tfoot><tr><td colspan="2">Итого сотрудников: <strong id="staffTotalCount">—</strong></td><td colspan="4">Сумма окладов за год с учётом периодов: <strong id="staffTotalSalary">—</strong></td></tr></tfoot>
         </table></div>
+      </div>
+      <div class="staff-actions card">
+        <div class="staff-add-controls"><label for="newEmployeeRole">Добавить плановую единицу</label><select id="newEmployeeRole"><option value="rop">РОП</option><option value="group">Руководитель группы</option><option value="field">Выездной менеджер</option><option value="engineer">Инженер</option><option value="senior">Старший лидоруб</option><option value="lead">Лидоруб</option></select><select id="newEmployeeStatus" aria-label="Статус новой плановой единицы"><option value="regular">Основной сотрудник</option><option value="trainee">Стажёр</option></select><button type="button" id="addEmployeeBtn" class="add-employee-button">+ Добавить сотрудника</button></div>
+        <p class="hint">По умолчанию в модели 12 плановых единиц с января по декабрь. Стажёр получает только оклад; все переменные выплаты для него отключены.</p>
+        <p class="hint" id="staffCountByRole"></p>
       </div>
     </section>
 
@@ -138,15 +144,24 @@
     </section>
 
     <section class="tab-panel" id="tab-employees">
-      <div class="section-heading"><div><p class="eyebrow">06 / ПЕРСОНАЛЬНАЯ СТРУКТУРА</p><h2>ФОТ по каждому сотруднику</h2></div><span class="muted">Суммы в рублях за год</span></div>
+      <div class="section-heading"><div><p class="eyebrow">06 / ПЕРСОНАЛЬНАЯ СТРУКТУРА</p><h2>ФОТ по плановым единицам</h2></div><span class="muted">Суммы в рублях за год</span></div>
       <div class="card table-card">
         <div class="table-scroll"><table class="data-table employee-table">
-          <thead><tr><th>Сотрудник</th><th>Общий ФОТ</th><th>% от общего ФОТ</th><th>Средний ФОТ<br>в месяц</th><th>Оклад</th><th>KPI</th><th>% начисления</th><th>KPI за<br>замер</th><th>Компенсация<br>выездным</th><th>Квартальные<br>выплаты</th><th>Годовой<br>бонус</th></tr></thead>
+          <thead><tr><th>Плановая единица</th><th>Общий ФОТ</th><th>% от общего ФОТ</th><th>Средний ФОТ<br>в месяц</th><th>Оклад</th><th>KPI</th><th>% начисления</th><th>KPI за<br>замер</th><th>Компенсация<br>выездным</th><th>Квартальные<br>выплаты</th><th>Годовой<br>бонус</th></tr></thead>
           <tbody id="employeeFotBody"></tbody>
           <tfoot id="employeeFotFoot"></tfoot>
         </table></div>
       </div>
-      <p class="hint page-hint">Если в должности несколько сотрудников, начисления по этой должности распределяются между ними поровну. Оклад и KPI рассчитываются отдельно для каждого сотрудника. При нулевой численности должности её переменные выплаты также обнуляются. Сумма по сотрудникам сверяется с общим ФОТ по всем составляющим.</p>
+      <p class="hint page-hint">Каждая строка — отдельная плановая штатная единица. Состав и период работы задаются на вкладке «Штат и оклады». Квартальные выплаты распределяются пропорционально количеству месяцев работы в квартале.</p>
+    </section>
+
+    <section class="tab-panel" id="tab-employee-monthly">
+      <div class="section-heading"><div><p class="eyebrow">07 / ПОМЕСЯЧНАЯ СТРУКТУРА</p><h2>ФОТ по месяцам по сотрудникам</h2></div><span class="muted">Итоговая сумма по каждому сотруднику за месяц</span></div>
+      <div class="card table-card"><div class="table-scroll"><table class="data-table employee-monthly-table">
+        <thead><tr><th>Плановая единица</th><th>Янв</th><th>Фев</th><th>Мар</th><th>Апр</th><th>Май</th><th>Июн</th><th>Июл</th><th>Авг</th><th>Сен</th><th>Окт</th><th>Ноя</th><th>Дек</th><th>Итого за год</th></tr></thead>
+        <tbody id="employeeMonthlyBody"></tbody><tfoot id="employeeMonthlyFoot"></tfoot>
+      </table></div></div>
+      <p class="hint page-hint">В ячейке показана общая сумма ФОТ плановой единицы за месяц, без разбивки на оклад, KPI и переменные начисления. Неактивные месяцы отображаются нулём.</p>
     </section>
 
     <footer class="footer">

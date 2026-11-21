@@ -233,3 +233,66 @@ canvas{height:250px}
   font-weight: 400;
   color: var(--muted);
 }
+/* Плановые штатные единицы и помесячный ФОТ */
+#staffTable{min-width:900px}
+#staffTable th,#staffTable td{text-align:left}
+#staffTable input,#staffTable select{width:100%;min-width:75px;border:1px solid var(--line);border-radius:7px;padding:8px 7px;background:#fff;color:var(--ink);font:600 13px Manrope}
+#staffTable td:nth-child(2){font-weight:700}
+.staff-actions{margin-top:14px;padding:18px 20px}
+.staff-add-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px;font-weight:700}
+.staff-add-controls select{padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font:600 13px Manrope}
+.add-employee-button,.remove-employee{border:0;border-radius:8px;background:var(--accent);color:#fff;padding:10px 15px;font:700 13px Manrope;cursor:pointer}
+.remove-employee{background:#fff0f0;color:#b33b3b;padding:5px 11px;font-size:18px;line-height:1}
+.employee-monthly-table{min-width:1200px}
+.employee-monthly-table th,.employee-monthly-table td{text-align:right}
+.employee-monthly-table th:first-child,.employee-monthly-table td:first-child{text-align:left;min-width:180px}
+@media(max-width:800px){#staffTable{min-width:900px}.employee-monthly-table{min-width:1200px}.staff-add-controls{align-items:stretch;flex-direction:column}.staff-add-controls select,.add-employee-button{width:100%}}
+
+/* Компактная таблица плановых штатных единиц */
+#staffTable {
+  width: 100%;
+  min-width: 780px;
+  table-layout: fixed;
+}
+#staffTable th,
+#staffTable td {
+  padding: 9px 8px;
+  vertical-align: middle;
+}
+#staffTable th:nth-child(1),
+#staffTable td:nth-child(1) { width: 22%; }
+#staffTable th:nth-child(2),
+#staffTable td:nth-child(2) { width: 21%; }
+#staffTable th:nth-child(3),
+#staffTable td:nth-child(3) { width: 15%; }
+#staffTable th:nth-child(4),
+#staffTable td:nth-child(4) { width: 16%; }
+#staffTable th:nth-child(5),
+#staffTable td:nth-child(5) { width: 16%; }
+#staffTable th:nth-child(6),
+#staffTable td:nth-child(6) { width: 10%; text-align: center; }
+#staffTable input,
+#staffTable select {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 6px;
+  font-size: 12px;
+}
+#staffTable td:nth-child(2) {
+  overflow-wrap: anywhere;
+}
+.table-scroll:has(#staffTable) {
+  overflow-x: auto;
+}
+@media (max-width: 800px) {
+  #staffTable { min-width: 780px; }
+}
+
+/* Статус плановой единицы и стажёра */
+#staffTable th:nth-child(1),#staffTable td:nth-child(1){width:18%}
+#staffTable th:nth-child(2),#staffTable td:nth-child(2){width:17%}
+#staffTable th:nth-child(3),#staffTable td:nth-child(3){width:16%}
+#staffTable th:nth-child(4),#staffTable td:nth-child(4){width:14%}
+#staffTable th:nth-child(5),#staffTable td:nth-child(5){width:13%}
+#staffTable th:nth-child(6),#staffTable td:nth-child(6){width:13%}
+#staffTable th:nth-child(7),#staffTable td:nth-child(7){width:9%;text-align:center}

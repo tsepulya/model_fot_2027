@@ -12,13 +12,32 @@ const roles = [
   {id:"lead",name:"Лидоруб",count:2,salary:50000,kpi:{min:13000,avg:22000,max:31000}}
 ];
 
+// Плановые штатные единицы: по умолчанию 12 сотрудников, январь–декабрь.
+// ФИО не используются — только условные названия внутри должности.
+let nextEmployeeId = 1;
+const employees = [];
+roles.forEach(role => {
+  for (let n = 1; n <= role.count; n++) {
+    employees.push({
+      id: nextEmployeeId++, roleId: role.id,
+      name: `${role.name} ${n}`, salary: role.salary,
+      startMonth: 0, endMonth: 11
+    });
+  }
+});
+const monthNames = months.map(m => m[0]);
+const activeInMonth = (employee, monthIndex) => monthIndex >= employee.startMonth && monthIndex <= employee.endMonth;
+const activeEmployees = (roleId, monthIndex) => employees.filter(e => e.roleId === roleId && !e.isTrainee && activeInMonth(e, monthIndex));
+const roleCount = roleId => employees.filter(e => e.roleId === roleId).length;
+
+
 
 const $ = id => document.getElementById(id);
 const rub = value => new Intl.NumberFormat("ru-RU",{style:"currency",currency:"RUB",maximumFractionDigits:0}).format(Number.isFinite(value)?value:0);
 const compact = value => new Intl.NumberFormat("ru-RU",{notation:"compact",maximumFractionDigits:1}).format(value);
 const plain = value => new Intl.NumberFormat("ru-RU",{maximumFractionDigits:0}).format(Number.isFinite(value)?value:0);
 const scenario = () => $("kpiScenario").value;
-const selectedKpi = role => role.kpi[scenario()];
+const selectedKpi = role => scenario() === "zero" ? 0 : role.kpi[scenario()];
 const sum = arr => arr.reduce((a,b)=>a+b,0);
 const quarterEnd = [2,5,8,11];
 
@@ -44,108 +63,130 @@ function readInputs(){
 function calculate(){
   const p=readInputs();
   const revenueYear=p.annual*p.achievement;
-  // Распределяем целое количество договоров по месяцам
-  const shareTotal = sum(months.map(m => m[1]));
-  const annualContracts = Math.round(revenueYear / p.averageCheck);
+  const shareTotal=sum(months.map(m=>m[1]));
+  const annualContracts=Math.round(revenueYear/p.averageCheck);
+  const rawContracts=months.map(([,share])=>annualContracts*share/shareTotal);
+  const contractAllocation=rawContracts.map(Math.floor);
+  let remainder=annualContracts-sum(contractAllocation);
+  const remainders=rawContracts.map((value,index)=>({index,remainder:value-Math.floor(value)})).sort((a,b)=>b.remainder-a.remainder);
+  for(let i=0;i<remainder;i++) contractAllocation[remainders[i].index]++;
 
-  const rawContracts = months.map(([name, share]) =>
-    annualContracts * share / shareTotal
-  );
-
-  const contractAllocation = rawContracts.map(Math.floor);
-
-  let remainder = annualContracts - sum(contractAllocation);
-
-  const remainders = rawContracts
-    .map((value, index) => ({
-      index,
-      remainder: value - Math.floor(value)
-    }))
-    .sort((a, b) => b.remainder - a.remainder);
-
-  for (let i = 0; i < remainder; i++) {
-    contractAllocation[remainders[i].index]++;
-  }
-  const salaryMonth=sum(roles.map(r=>r.count*r.salary));
-  const kpiMonth=sum(roles.map(r=>r.count*selectedKpi(r)));
-  const salaryYear=salaryMonth*12;
-  const kpiYear=kpiMonth*12;
   const travelPerMeasure=p.travelDistance*0.09*p.fuelPrice+p.travelDistance*2.5;
-  const displayShares = months.map(([,share]) => Number((share / shareTotal * 100).toFixed(2)));
-  // Компенсируем округление в последнем месяце, чтобы отображаемые доли дали ровно 100,00%.
-  displayShares[displayShares.length - 1] = Number((100 - sum(displayShares.slice(0, -1))).toFixed(2));
+  const displayShares=months.map(([,share])=>Number((share/shareTotal*100).toFixed(2)));
+  displayShares[displayShares.length-1]=Number((100-sum(displayShares.slice(0,-1))).toFixed(2));
+
   const monthsData=months.map(([name,share],i)=>{
-    const revenue = revenueYear * share / shareTotal;
-    const plannedContracts = contractAllocation[i];
+    const revenue=revenueYear*share/shareTotal;
+    const plannedContracts=contractAllocation[i];
     const targetMeasures=Math.ceil(plannedContracts/p.measureConversion);
-    const onsiteContracts=revenue;
-    const monthlyCommission =
-      (roles.find(r=>r.id==="rop").count ? revenue*p.ropMonthlyRate : 0) +
-      (roles.find(r=>r.id==="group").count ? revenue*p.groupMonthlyRate : 0) +
-      (roles.find(r=>r.id==="field").count ? revenue*p.fieldRate : 0) +
-      (roles.find(r=>r.id==="engineer").count ? onsiteContracts*p.engineerRate : 0);
-    // Сдельная оплата возникает только при наличии лидорубов в штате.
-    const piecework=roles.find(r=>r.id==="lead").count ? targetMeasures*1000 : 0;
-    // Компенсация поездок начисляется только при наличии выездных менеджеров.
-    const travelCompensation=roles.find(r=>r.id==="field").count ? targetMeasures*travelPerMeasure : 0;
-    return {index:i,name,share,sharePercent:displayShares[i],revenue,salary:salaryMonth,kpi:kpiMonth,monthlyCommission,piecework,travelCompensation,targetMeasures,quarterly:0,annualBonus:0};
+    const active=employees.filter(e=>activeInMonth(e,i));
+    const salary=sum(active.map(e=>e.salary));
+    const kpi=sum(active.filter(e=>!e.isTrainee).map(e=>selectedKpi(roles.find(r=>r.id===e.roleId))));
+    const commissionRates={rop:p.ropMonthlyRate,group:p.groupMonthlyRate,field:p.fieldRate,engineer:p.engineerRate};
+    // Комиссия начисляется на команду, если в соответствующей должности есть активный сотрудник,
+    // и распределяется поровну между сотрудниками этой должности, работающими в данном месяце.
+    const monthlyCommission=sum(Object.entries(commissionRates).map(([roleId,rate])=>activeEmployees(roleId,i).length?revenue*rate:0));
+    const leadCount=activeEmployees("lead",i).length;
+    const piecework=leadCount?targetMeasures*1000:0;
+    const fieldCount=activeEmployees("field",i).length;
+    const travelCompensation=fieldCount?targetMeasures*travelPerMeasure:0;
+    return {index:i,name,share,sharePercent:displayShares[i],revenue,salary,kpi,monthlyCommission,piecework,travelCompensation,targetMeasures,quarterly:0,annualBonus:0};
   });
+
+  // Квартальные выплаты распределяются между конкретными сотрудниками пропорционально
+  // количеству месяцев их работы в квартале (из трёх).
+  const employeeQuarterly=Object.fromEntries(employees.map(e=>[e.id,0]));
   quarterEnd.forEach(endIndex=>{
     const startIndex=endIndex-2;
     const quarterRevenue=sum(monthsData.slice(startIndex,endIndex+1).map(m=>m.revenue));
-    const quarterlyBonus =
-      roles.find(r=>r.id==="lead").count*quarterRevenue*p.leadQuarterRate +
-      roles.find(r=>r.id==="senior").count*quarterRevenue*p.seniorQuarterRate +
-      roles.find(r=>r.id==="field").count*quarterRevenue*p.fieldQuarterRate;
-    monthsData[endIndex].quarterly=quarterlyBonus;
+    const rates={lead:p.leadQuarterRate,senior:p.seniorQuarterRate,field:p.fieldQuarterRate};
+    Object.entries(rates).forEach(([roleId,rate])=>{
+      employees.filter(e=>e.roleId===roleId && !e.isTrainee).forEach(e=>{
+        const activeMonths= e.isTrainee ? 0 : monthsData.slice(startIndex,endIndex+1).filter(m=>activeInMonth(e,m.index)).length;
+        employeeQuarterly[e.id]+=quarterRevenue*rate*(activeMonths/3);
+      });
+    });
+    monthsData[endIndex].quarterly=sum(employees.map(e=>{
+      if(e.isTrainee)return 0;
+      const activeMonths=monthsData.slice(startIndex,endIndex+1).filter(m=>activeInMonth(e,m.index)).length;
+      const rate=rates[e.roleId]||0;
+      return quarterRevenue*rate*(activeMonths/3);
+    }));
   });
-  // Годовой бонус не должен попадать в ФОТ, если должность РОПа обнулена.
-  monthsData[11].annualBonus = roles.find(r=>r.id==="rop").count
-    ? Math.min(600000, p.ropAnnualBonusBase * p.achievement)
-    : 0;
+
+  // Годовой бонус РОП начисляется, если плановая единица РОП активна в декабре.
+  const ropActiveInDecember=activeEmployees("rop",11);
+  const annualBonusTotal=ropActiveInDecember.length?Math.min(600000,p.ropAnnualBonusBase*p.achievement):0;
+  monthsData[11].annualBonus=annualBonusTotal;
+  const employeeAnnualBonus=Object.fromEntries(employees.map(e=>[e.id,0]));
+  if(ropActiveInDecember.length){
+    ropActiveInDecember.forEach(e=>employeeAnnualBonus[e.id]=annualBonusTotal/ropActiveInDecember.length);
+  }
+
+  // Сдельная оплата и компенсации распределяются по сотрудникам, активным в конкретном месяце.
+  const employeeMonthly=Object.fromEntries(employees.map(e=>[e.id,{salary:0,kpi:0,monthlyCommission:0,piecework:0,travel:0,quarterly:employeeQuarterly[e.id],annualBonus:employeeAnnualBonus[e.id],monthlyFot:Array(12).fill(0)}]));
+  monthsData.forEach(m=>{
+    const active=employees.filter(e=>activeInMonth(e,m.index));
+    active.forEach(e=>{
+      const bucket=employeeMonthly[e.id];
+      const role=roles.find(r=>r.id===e.roleId);
+      bucket.salary+=e.salary;
+      if(!e.isTrainee){
+        bucket.kpi+=selectedKpi(role);
+        bucket.monthlyFot[m.index]+=selectedKpi(role);
+      }
+      bucket.monthlyFot[m.index]+=e.salary;
+    });
+    Object.entries({rop:p.ropMonthlyRate,group:p.groupMonthlyRate,field:p.fieldRate,engineer:p.engineerRate}).forEach(([roleId,rate])=>{
+      const roster=activeEmployees(roleId,m.index);
+      if(roster.length){
+        const each=m.revenue*rate/roster.length;
+        roster.forEach(e=>{employeeMonthly[e.id].monthlyCommission+=each;employeeMonthly[e.id].monthlyFot[m.index]+=each;});
+      }
+    });
+    const leads=activeEmployees("lead",m.index);
+    if(leads.length){
+      const each=m.piecework/leads.length;
+      leads.forEach(e=>{employeeMonthly[e.id].piecework+=each;employeeMonthly[e.id].monthlyFot[m.index]+=each;});
+    }
+    const fields=activeEmployees("field",m.index);
+    if(fields.length){
+      const each=m.travelCompensation/fields.length;
+      fields.forEach(e=>{employeeMonthly[e.id].travel+=each;employeeMonthly[e.id].monthlyFot[m.index]+=each;});
+    }
+  });
+  employees.forEach(e=>{
+    const bucket=employeeMonthly[e.id];
+    // Квартальная премия отражается в месяце окончания квартала.
+    quarterEnd.forEach(endIndex=>{
+      const quarterRevenue=sum(monthsData.slice(endIndex-2,endIndex+1).map(m=>m.revenue));
+      const activeMonths=e.isTrainee ? 0 : monthsData.slice(endIndex-2,endIndex+1).filter(m=>activeInMonth(e,m.index)).length;
+      const rate=({lead:p.leadQuarterRate,senior:p.seniorQuarterRate,field:p.fieldQuarterRate})[e.roleId]||0;
+      const amount=quarterRevenue*rate*(activeMonths/3);
+      bucket.monthlyFot[endIndex]+=amount;
+    });
+    bucket.monthlyFot[11]+=bucket.annualBonus;
+  });
+
   monthsData.forEach(m=>{
     m.variable=m.monthlyCommission+m.piecework+m.travelCompensation+m.quarterly+m.annualBonus;
     m.fot=m.salary+m.kpi+m.variable;
     m.shareFot=m.revenue?m.fot/m.revenue:0;
   });
-  const totalTravel=sum(monthsData.map(m=>m.travelCompensation));
-  // Распределяем начисления по конкретным сотрудникам внутри каждой должности.
-  const employeeRows=[];
-  const modeledRevenue=sum(monthsData.map(m=>m.revenue));
-  const roleMonthlyCommission = {
-    rop: modeledRevenue*p.ropMonthlyRate,
-    group: modeledRevenue*p.groupMonthlyRate,
-    field: modeledRevenue*p.fieldRate,
-    engineer: modeledRevenue*p.engineerRate
-  };
-  const quarterRevenueByEnd = quarterEnd.map(endIndex=>sum(monthsData.slice(endIndex-2,endIndex+1).map(m=>m.revenue)));
-  const quarterlyByRole = {
-    lead: quarterRevenueByEnd.reduce((a,v)=>a+v*p.leadQuarterRate,0),
-    senior: quarterRevenueByEnd.reduce((a,v)=>a+v*p.seniorQuarterRate,0),
-    field: quarterRevenueByEnd.reduce((a,v)=>a+v*p.fieldQuarterRate,0)
-  };
-  const annualBonusByRole = {rop:monthsData[11].annualBonus};
-  roles.forEach(role=>{
-    for(let n=1;n<=role.count;n++){
-      const divisor=Math.max(1,role.count);
-      const salary=role.salary*12;
-      const kpi=selectedKpi(role)*12;
-      const monthlyCommission=(roleMonthlyCommission[role.id]||0)/divisor;
-      const piecework=role.id==="lead" ? sum(monthsData.map(m=>m.piecework))/divisor : 0;
-      const travel=role.id==="field" ? totalTravel/divisor : 0;
-      const quarterly=(quarterlyByRole[role.id]||0);
-      const annualBonus=(annualBonusByRole[role.id]||0);
-      const total=salary+kpi+monthlyCommission+piecework+travel+quarterly+annualBonus;
-      employeeRows.push({name:`${role.name} ${n}`,total,salary,kpi,monthlyCommission,piecework,travel,quarterly,annualBonus});
-    }
+
+  const employeeRows=employees.map(e=>{
+    const b=employeeMonthly[e.id];
+    const total=sum(b.monthlyFot);
+    return {id:e.id,name:e.name,roleId:e.roleId,isTrainee:!!e.isTrainee,total,salary:b.salary,kpi:b.kpi,monthlyCommission:b.monthlyCommission,piecework:b.piecework,travel:b.travel,quarterly:b.quarterly,annualBonus:b.annualBonus,monthlyFot:b.monthlyFot.slice(),startMonth:e.startMonth,endMonth:e.endMonth};
   });
-  // Итоговый ФОТ строится по тем же персональным начислениям, что и таблица сотрудников.
-  // Это гарантирует совпадение итогов при любом изменении численности.
+  const salaryYear=sum(monthsData.map(m=>m.salary));
+  const kpiYear=sum(monthsData.map(m=>m.kpi));
+  const fotYear=sum(monthsData.map(m=>m.fot));
   const employeeFotYear=sum(employeeRows.map(e=>e.total));
-  const variableYear=sum(employeeRows.map(e=>e.monthlyCommission+e.piecework+e.travel+e.quarterly+e.annualBonus));
-  const fotYear=employeeFotYear;
+  const variableYear=sum(monthsData.map(m=>m.variable));
+  const totalTravel=sum(monthsData.map(m=>m.travelCompensation));
   const totalMeasures=sum(monthsData.map(m=>m.targetMeasures));
-  return {p,revenueYear,salaryMonth,kpiMonth,salaryYear,kpiYear,variableYear,fotYear,monthsData,totalMeasures,totalTravel,travelPerMeasure,employeeRows};
+  return {p,revenueYear,salaryMonth:monthsData[0].salary,kpiMonth:monthsData[0].kpi,salaryYear,kpiYear,variableYear,fotYear,employeeFotYear,monthsData,totalMeasures,totalTravel,travelPerMeasure,employeeRows};
 }
 function updateOutputs(){
   const d=calculate();
@@ -164,6 +205,7 @@ function updateOutputs(){
   renderKpi();
   renderMonthly(d);
   renderEmployees(d);
+  renderEmployeeMonthly(d);
   renderSeason(d);
   drawMonthlyChart(d);
   drawStructureChart(d);
@@ -172,18 +214,31 @@ function updateOutputs(){
 function renderStaff(){
   const body=$("staffTable").querySelector("tbody");
   body.innerHTML="";
-  roles.forEach(r=>{
+  employees.forEach(e=>{
+    const role=roles.find(r=>r.id===e.roleId);
     const tr=document.createElement("tr");
-    tr.innerHTML=`<td><span class="role-name">${r.name}</span></td>
-      <td><input class="count-input" type="number" min="0" max="100" step="1" value="${r.count}" aria-label="Численность: ${r.name}" data-role="${r.id}" data-field="count"></td>
-      <td><input type="number" min="0" step="1000" value="${r.salary}" aria-label="Оклад: ${r.name}" data-role="${r.id}" data-field="salary"></td>
-      <td>${plain(r.count*r.salary*12)}</td>`;
+    tr.innerHTML=`<td><span class="role-name">${role.name}</span></td>
+      <td><strong>${e.name}</strong></td>
+      <td><select data-employee="${e.id}" data-field="isTrainee" aria-label="Статус: ${e.name}"><option value="false" ${!e.isTrainee?'selected':''}>Основной</option><option value="true" ${e.isTrainee?'selected':''}>Стажёр</option></select></td>
+      <td><input type="number" min="0" step="1000" value="${e.salary}" aria-label="Оклад: ${e.name}" data-employee="${e.id}" data-field="salary"></td>
+      <td><select data-employee="${e.id}" data-field="startMonth" aria-label="Начало работы: ${e.name}">${monthNames.map((m,i)=>`<option value="${i}" ${e.startMonth===i?'selected':''}>${m}</option>`).join("")}</select></td>
+      <td><select data-employee="${e.id}" data-field="endMonth" aria-label="Окончание работы: ${e.name}">${monthNames.map((m,i)=>`<option value="${i}" ${e.endMonth===i?'selected':''}>${m}</option>`).join("")}</select></td>
+      <td><button type="button" class="remove-employee" data-remove="${e.id}" aria-label="Удалить ${e.name}">×</button></td>`;
     body.appendChild(tr);
   });
-  $("staffTotalCount").textContent=sum(roles.map(r=>r.count));
-  $("staffTotalSalary").textContent=rub(sum(roles.map(r=>r.count*r.salary*12)));
+  const counts=Object.fromEntries(roles.map(r=>[r.id,roleCount(r.id)]));
+  $("staffTotalCount").textContent=employees.length;
+  $("staffTotalSalary").textContent=rub(sum(employees.map(e=>e.salary*(e.endMonth-e.startMonth+1))));
+  $("staffCountByRole").innerHTML=roles.map(r=>`${r.name}: ${counts[r.id]}`).join(" · ");
 }
 
+function addEmployee(){
+  const role=roles.find(r=>r.id===$("newEmployeeRole").value)||roles[0];
+  const existingNumbers=employees.filter(e=>e.roleId===role.id).map(e=>Number((e.name.match(/ (\d+)$/)||[])[1]||0));
+  const nextNumber=Math.max(0,...existingNumbers)+1;
+  employees.push({id:nextEmployeeId++,roleId:role.id,name:`${role.name} ${nextNumber}`,salary:role.salary,startMonth:0,endMonth:11,isTrainee:$("newEmployeeStatus").value==="trainee"});
+  updateOutputs();
+}
 function renderKpi(){
   const body=$("kpiTable").querySelector("tbody");
   body.innerHTML="";
@@ -239,10 +294,10 @@ function renderEmployees(d){
   body.innerHTML="";
   d.employeeRows.forEach(e=>{
     const tr=document.createElement("tr");
-    tr.innerHTML=`<td><strong>${e.name}</strong></td>
+    tr.innerHTML=`<td><strong>${e.name}${e.isTrainee?" — стажёр":""}</strong></td>
       <td><strong>${plain(e.total)}</strong></td>
       <td>${(d.fotYear?e.total/d.fotYear*100:0).toLocaleString("ru-RU",{maximumFractionDigits:2})}%</td>
-      <td>${plain(e.total / 12)}</td>
+      <td>${plain(e.total/(e.endMonth-e.startMonth+1))}</td>
       <td>${plain(e.salary)}</td><td>${plain(e.kpi)}</td>
       <td>${plain(e.monthlyCommission)}</td><td>${plain(e.piecework)}</td>
       <td>${plain(e.travel)}</td><td>${plain(e.quarterly)}</td><td>${plain(e.annualBonus)}</td>`;
@@ -250,12 +305,21 @@ function renderEmployees(d){
   });
   const keys=["total","salary","kpi","monthlyCommission","piecework","travel","quarterly","annualBonus"];
   const values=Object.fromEntries(keys.map(k=>[k,sum(d.employeeRows.map(e=>e[k]))]));
-  $("employeeFotFoot").innerHTML=`<tr><td>Итого</td><td>${plain(values.total)}</td><td>100%</td>
-  <td>${plain(values.total / 12)}</td>
-    <td>${plain(values.salary)}</td><td>${plain(values.kpi)}</td><td>${plain(values.monthlyCommission)}</td>
-    <td>${plain(values.piecework)}</td><td>${plain(values.travel)}</td><td>${plain(values.quarterly)}</td><td>${plain(values.annualBonus)}</td></tr>`;
+  $("employeeFotFoot").innerHTML=`<tr><td>Итого</td><td>${plain(values.total)}</td><td>100%</td><td>${plain(values.total/12)}</td><td>${plain(values.salary)}</td><td>${plain(values.kpi)}</td><td>${plain(values.monthlyCommission)}</td><td>${plain(values.piecework)}</td><td>${plain(values.travel)}</td><td>${plain(values.quarterly)}</td><td>${plain(values.annualBonus)}</td></tr>`;
 }
 
+function renderEmployeeMonthly(d){
+  const body=$("employeeMonthlyBody");
+  if(!body)return;
+  body.innerHTML="";
+  d.employeeRows.forEach(e=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td><strong>${e.name}${e.isTrainee?" — стажёр":""}</strong></td>${e.monthlyFot.map(v=>`<td>${plain(v)}</td>`).join("")}<td><strong>${plain(e.total)}</strong></td>`;
+    body.appendChild(tr);
+  });
+  const monthlyTotals=months.map((m,i)=>sum(d.employeeRows.map(e=>e.monthlyFot[i])));
+  $("employeeMonthlyFoot").innerHTML=`<tr><td>Итого</td>${monthlyTotals.map(v=>`<td>${plain(v)}</td>`).join("")}<td>${plain(sum(monthlyTotals))}</td></tr>`;
+}
 function renderSeason(d){
   $("seasonBars").innerHTML=d.monthsData.map(m=>{
     const tip=`Выручка: ${plain(m.revenue)} руб.\\nФОТ: ${plain(m.fot)} руб.\\nФОТ / выручка: ${(m.shareFot*100).toLocaleString("ru-RU",{maximumFractionDigits:2})}%`;
@@ -457,6 +521,7 @@ function exportToExcel() {
   // --------------------------------------------------
 
   const scenarioNames = {
+    zero: "Нулевой (0 ₽)",
     min: "Минимальный",
     avg: "Средний (условный)",
     max: "Максимальный"
@@ -487,16 +552,12 @@ function exportToExcel() {
     ["Бонус РОП при 100% выполнения, руб.", d.p.ropAnnualBonusBase],
     [],
     ["ШТАТ И ОКЛАДЫ"],
-    ["Должность", "Количество сотрудников", "Оклад в месяц, руб.", "Оклад за год, руб."]
+    ["Должность", "Плановая единица", "Статус", "Оклад в месяц, руб.", "С месяца", "По месяц"]
   ];
 
-  roles.forEach(role => {
-    scenarioData.push([
-      role.name,
-      role.count,
-      role.salary,
-      role.count * role.salary * 12
-    ]);
+  employees.forEach(employee => {
+    const role = roles.find(r => r.id === employee.roleId);
+    scenarioData.push([role.name, employee.name, employee.isTrainee ? "Стажёр" : "Основной сотрудник", employee.salary, monthNames[employee.startMonth], monthNames[employee.endMonth]]);
   });
 
   scenarioData.push(
@@ -514,10 +575,7 @@ function exportToExcel() {
 
   const scenarioSheet = XLSX.utils.aoa_to_sheet(scenarioData);
   scenarioSheet["!cols"] = [
-    { wch: 48 },
-    { wch: 24 },
-    { wch: 22 },
-    { wch: 22 }
+    { wch: 40 }, { wch: 24 }, { wch: 22 }, { wch: 18 }, { wch: 16 }, { wch: 16 }
   ];
 
   XLSX.utils.book_append_sheet(wb, scenarioSheet, "Сценарий компании");
@@ -592,7 +650,8 @@ function exportToExcel() {
 
   const employeeData = [
     [
-      "Сотрудник",
+      "Плановая единица",
+      "Статус",
       "Общий ФОТ, руб.",
       "Доля от общего ФОТ, %",
       "Средний ФОТ в месяц, руб.",
@@ -609,9 +668,10 @@ function exportToExcel() {
   d.employeeRows.forEach(e => {
     employeeData.push([
       e.name,
+      e.isTrainee ? "Стажёр" : "Основной сотрудник",
       e.total,
       d.fotYear ? e.total / d.fotYear * 100 : 0,
-      e.total / 12,
+      e.total / (e.endMonth - e.startMonth + 1),
       e.salary,
       e.kpi,
       e.monthlyCommission,
@@ -642,6 +702,7 @@ function exportToExcel() {
 
   employeeData.push([
     "Итого",
+    "",
     employeeTotals.total,
     100,
     employeeTotals.total / 12,
@@ -656,12 +717,18 @@ function exportToExcel() {
 
   const employeeSheet = XLSX.utils.aoa_to_sheet(employeeData);
   employeeSheet["!cols"] = [
-    { wch: 28 }, { wch: 20 }, { wch: 23 }, { wch: 22 }, { wch: 18 },
+    { wch: 28 }, { wch: 22 }, { wch: 20 }, { wch: 23 }, { wch: 22 }, { wch: 18 },
     { wch: 18 }, { wch: 25 }, { wch: 20 }, { wch: 27 },
     { wch: 23 }, { wch: 20 }
   ];
-
   XLSX.utils.book_append_sheet(wb, employeeSheet, "ФОТ по сотрудникам");
+
+  const monthlyEmployeeData = [["Плановая единица", ...monthNames, "Итого за год"]];
+  d.employeeRows.forEach(e => monthlyEmployeeData.push([`${e.name}${e.isTrainee ? " — стажёр" : ""}`, ...e.monthlyFot, e.total]));
+  monthlyEmployeeData.push(["Итого", ...months.map((m,i)=>sum(d.employeeRows.map(e=>e.monthlyFot[i]))), d.fotYear]);
+  const monthlyEmployeeSheet = XLSX.utils.aoa_to_sheet(monthlyEmployeeData);
+  monthlyEmployeeSheet["!cols"] = [{wch:28}, ...monthNames.map(()=>({wch:15})), {wch:18}];
+  XLSX.utils.book_append_sheet(wb, monthlyEmployeeSheet, "ФОТ по месяцам");
 
 
   // --------------------------------------------------
@@ -681,11 +748,27 @@ function attachEvents(){
   $("exportExcelBtn").addEventListener("click", exportToExcel);
   ["annualRevenue","achievement","averageCheck","measureConversion","kpiScenario","ropMonthlyRate","groupMonthlyRate","fieldRate","engineerRate","leadQuarterRate","seniorQuarterRate","fieldQuarterRate","ropAnnualBonus","travelDistance","fuelPrice"].forEach(id=>$(id).addEventListener("input",updateOutputs));
   $("staffTable").addEventListener("change",e=>{
-    const el=e.target;if(!el.matches("input[data-role]"))return;
-    const role=roles.find(r=>r.id===el.dataset.role);if(!role)return;
-    role[el.dataset.field]=Math.max(0,Number(el.value)||0);
+    const el=e.target;
+    if(!el.matches("[data-employee][data-field]"))return;
+    const employee=employees.find(x=>x.id===Number(el.dataset.employee));
+    if(!employee)return;
+    const field=el.dataset.field;
+    employee[field]=field==="salary"?Math.max(0,Number(el.value)||0):field==="isTrainee"?el.value==="true":Math.max(0,Math.min(11,Number(el.value)||0));
+    if(employee.startMonth>employee.endMonth){
+      if(field==="startMonth") employee.endMonth=employee.startMonth;
+      else employee.startMonth=employee.endMonth;
+    }
     updateOutputs();
   });
+  $("staffTable").addEventListener("click",e=>{
+    const button=e.target.closest("[data-remove]");
+    if(!button)return;
+    const id=Number(button.dataset.remove);
+    const index=employees.findIndex(x=>x.id===id);
+    if(index>=0)employees.splice(index,1);
+    updateOutputs();
+  });
+  $("addEmployeeBtn").addEventListener("click",addEmployee);
 
   document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{
     document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===btn));
